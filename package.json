@@ -1,0 +1,16 @@
+{
+  "name": "casas-en-disputa",
+  "version": "1.0.0",
+  "description": "Bot para el juego Casas en disputa",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
+  }
+}
