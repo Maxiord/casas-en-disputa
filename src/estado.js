@@ -17,6 +17,10 @@ function crearTablero() {
 
 // Genera números aleatorios usando una semilla
 function aleatorioConSemilla(semilla) {
+    semilla = Number.isFinite(Number(semilla))
+        ? ((Math.floor(Number(semilla)) % 233280) + 233280) % 233280
+        : 0;
+
     return () => {
         semilla = (semilla * 9301 + 49297) % 233280;
         return semilla / 233280;
@@ -33,17 +37,84 @@ function generarCasas(tablero, semilla) {
             ? Math.random
             : aleatorioConSemilla(semilla);
 
-    let casas = 0;
+    if (!Array.isArray(tablero) || tablero.length !== 10 ||
+        tablero.some((fila) => !Array.isArray(fila) || fila.length !== 10)) {
+        throw new TypeError("El tablero debe tener 10 filas y 10 columnas");
+    }
 
-    while (casas < 5) {
-        const fila = Math.floor(aleatorio() * 10);
-        const columna = Math.floor(aleatorio() * 10);
+    const esquinasIniciales = new Set(["0,0", "9,9"]);
+    const paresSimetricos = [];
 
-        if (tablero[fila][columna] === "") {
-            tablero[fila][columna] = "N";
-            casas++;
+    for (let fila = 0; fila < 10; fila++) {
+        for (let columna = 0; columna < 10; columna++) {
+            const indice = fila * 10 + columna;
+            const indiceRotado = 99 - indice;
+            if (indice >= indiceRotado) continue;
+
+            const pareja = {
+                primera: { fila, columna },
+                segunda: {
+                    fila: 9 - fila,
+                    columna: 9 - columna
+                }
+            };
+            const claves = [
+                `${pareja.primera.fila},${pareja.primera.columna}`,
+                `${pareja.segunda.fila},${pareja.segunda.columna}`
+            ];
+
+            if (
+                claves.every((clave) => !esquinasIniciales.has(clave)) &&
+                claves.every((clave) => {
+                    const [r, c] = clave.split(",").map(Number);
+                    return tablero[r][c] === "";
+                })
+            ) {
+                paresSimetricos.push(pareja);
+            }
         }
     }
+
+    if (paresSimetricos.length < 2) {
+        throw new RangeError("No hay espacio para generar cinco casas equilibradas");
+    }
+
+    function tomarAleatorio(lista) {
+        return Math.floor(aleatorio() * lista.length);
+    }
+
+    for (let i = 0; i < 2; i++) {
+        const pareja = paresSimetricos.splice(tomarAleatorio(paresSimetricos), 1)[0];
+        tablero[pareja.primera.fila][pareja.primera.columna] = "N";
+        tablero[pareja.segunda.fila][pareja.segunda.columna] = "N";
+    }
+
+    function distanciaToroidal(fila, columna, destinoFila, destinoColumna) {
+        const df = Math.abs(fila - destinoFila);
+        const dc = Math.abs(columna - destinoColumna);
+        return Math.min(df, 10 - df) + Math.min(dc, 10 - dc);
+    }
+
+    const casasEquidistantes = [];
+    for (let fila = 0; fila < 10; fila++) {
+        for (let columna = 0; columna < 10; columna++) {
+            const clave = `${fila},${columna}`;
+            if (esquinasIniciales.has(clave) || tablero[fila][columna] !== "") continue;
+
+            const distanciaA = distanciaToroidal(fila, columna, 0, 0);
+            const distanciaB = distanciaToroidal(fila, columna, 9, 9);
+            if (distanciaA === distanciaB) {
+                casasEquidistantes.push({ fila, columna });
+            }
+        }
+    }
+
+    if (casasEquidistantes.length === 0) {
+        throw new RangeError("No hay una casilla equidistante para la quinta casa");
+    }
+
+    const quintaCasa = casasEquidistantes[tomarAleatorio(casasEquidistantes)];
+    tablero[quintaCasa.fila][quintaCasa.columna] = "N";
 }
 
 // Tira el dado y devuelve 1, 2 o 3

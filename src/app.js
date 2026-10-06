@@ -25,6 +25,10 @@ function tableroValido(tablero) {
         return false;
     }
 
+    const idsPiezas = new Set();
+    let cantidadCasas = 0;
+    const piezasPorJugador = { A: 0, B: 0 };
+
     for (const fila of tablero) {
 
         if (!Array.isArray(fila)) {
@@ -34,9 +38,31 @@ function tableroValido(tablero) {
         if (fila.length !== 10) {
             return false;
         }
+
+        for (const celda of fila) {
+            if (celda === "") continue;
+
+            if (celda === "N") {
+                cantidadCasas++;
+                if (cantidadCasas > 5) return false;
+                continue;
+            }
+
+            if (typeof celda !== "string" || !/^[AB][1-9]\d*$/.test(celda)) {
+                return false;
+            }
+
+            if (idsPiezas.has(celda)) return false;
+            idsPiezas.add(celda);
+            piezasPorJugador[celda[0]]++;
+        }
     }
 
-    return true;
+    // En este juego las fichas no se eliminan: ambos jugadores conservan al menos la inicial.
+    return tablero[0][0] !== "N" &&
+        tablero[9][9] !== "N" &&
+        piezasPorJugador.A > 0 &&
+        piezasPorJugador.B > 0;
 }
 
 

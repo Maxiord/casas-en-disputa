@@ -8,6 +8,7 @@ const {
 
 const {
     procesarTurno,
+    colocarPiezasPendientes,
     comprobarFin,
     obtenerResultadoFinal
 } = require("../src/motor");
@@ -19,6 +20,9 @@ function jugarPartida() {
     const estado = crearEstadoInicial();
 
     while (!comprobarFin(estado)) {
+
+        // El árbitro incorpora las fichas pendientes antes de pedir la jugada.
+        colocarPiezasPendientes(estado, estado.jugador);
 
         const decisiones = decidirMovimientos(
             estado.tablero,
@@ -63,13 +67,41 @@ test("simula una partida completa", () => {
     ).toBe(true);
 });
 
-test("la partida termina al conquistar las 5 casas", () => {
+test("la partida termina al completar 50 turnos individuales", () => {
 
     const estado = crearEstadoInicial();
 
-    estado.casasConquistadas.A = 5;
+    estado.turno = 49;
+    expect(comprobarFin(estado)).toBe(false);
+
+    estado.turno = 50;
+    expect(comprobarFin(estado)).toBe(true);
+});
+
+test("gana quien conquista más casas y hay empate si igualan", () => {
+
+    const estado = crearEstadoInicial();
+    estado.casasConquistadas.A = 3;
+    estado.casasConquistadas.B = 2;
+    expect(obtenerResultadoFinal(estado)).toBe("A");
+
+    estado.casasConquistadas.A = 2;
+    estado.casasConquistadas.B = 3;
+    expect(obtenerResultadoFinal(estado)).toBe("B");
+
+    estado.casasConquistadas.A = 2;
+    estado.casasConquistadas.B = 2;
+    expect(obtenerResultadoFinal(estado)).toBe("EMPATE");
+});
+
+test("la derrota técnica tiene prioridad sobre las casas conquistadas", () => {
+
+    const estado = crearEstadoInicial();
+    estado.casasConquistadas.B = 5;
+    estado.fallosConsecutivos.B = 3;
 
     expect(comprobarFin(estado)).toBe(true);
+    expect(obtenerResultadoFinal(estado)).toBe("A");
 });
 
 test("la partida termina al conquistar las 5 casas", () => {

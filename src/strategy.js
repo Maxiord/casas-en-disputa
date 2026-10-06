@@ -3,163 +3,104 @@ const {
 } = require("./estado");
 
 
-// Devuelve las cuatro direcciones posibles
+// Devuelve las cuatro direcciones posibles en un orden determinístico.
 function movimientosValidos() {
-
     return ["N", "S", "O", "E"];
 }
 
 
-// Calcula dónde termina una pieza
+// Calcula dónde termina una pieza tras avanzar exactamente el resultado del dado.
 function calcularDestino(fila, columna, direccion, dado) {
-
     let nuevaFila = fila;
     let nuevaColumna = columna;
 
     for (let i = 0; i < dado; i++) {
-
-        if (direccion === "N") {
-            nuevaFila = (nuevaFila - 1 + 10) % 10;
-        }
-
-        if (direccion === "S") {
-            nuevaFila = (nuevaFila + 1) % 10;
-        }
-
-        if (direccion === "O") {
-            nuevaColumna = (nuevaColumna - 1 + 10) % 10;
-        }
-
-        if (direccion === "E") {
-            nuevaColumna = (nuevaColumna + 1) % 10;
-        }
+        if (direccion === "N") nuevaFila = (nuevaFila - 1 + 10) % 10;
+        if (direccion === "S") nuevaFila = (nuevaFila + 1) % 10;
+        if (direccion === "O") nuevaColumna = (nuevaColumna - 1 + 10) % 10;
+        if (direccion === "E") nuevaColumna = (nuevaColumna + 1) % 10;
     }
 
-    return {
-        fila: nuevaFila,
-        columna: nuevaColumna
-    };
+    return { fila: nuevaFila, columna: nuevaColumna };
 }
 
 
-// Comprueba si una posición puede ser destino
+// Una casilla puede ocuparse si está vacía o contiene una casa neutral.
 function posicionLibre(tablero, fila, columna) {
-
-    return tablero[fila][columna] === "" ||
-           tablero[fila][columna] === "N";
+    return tablero[fila][columna] === "" || tablero[fila][columna] === "N";
 }
 
 
-// Busca los movimientos posibles para una pieza
+// Las fichas propias también pueden usar la casilla inicial de otra ficha
+// propia, porque todas se desplazan simultáneamente.
 function movimientosValidosParaPieza(tablero, pieza, dado) {
-
-    const movimientos = movimientosValidos();
-
-    const movimientosDisponibles = [];
-
-    for (const direccion of movimientos) {
-
-        const destino = calcularDestino(
-            pieza.fila,
-            pieza.columna,
-            direccion,
-            dado
-        );
-
-        if (posicionLibre(
-            tablero,
-            destino.fila,
-            destino.columna
-        )) {
-
-            movimientosDisponibles.push(direccion);
-        }
-    }
-
-    return movimientosDisponibles;
+    const jugador = pieza.id[0];
+    return movimientosValidos().filter((direccion) => {
+        const destino = calcularDestino(pieza.fila, pieza.columna, direccion, dado);
+        const ocupante = tablero[destino.fila][destino.columna];
+        return posicionLibre(tablero, destino.fila, destino.columna) ||
+            (typeof ocupante === "string" && ocupante.startsWith(jugador));
+    });
 }
 
 
-// Comprueba si un movimiento conquista una casa
-function conquistaCasa(
-    tablero,
-    pieza,
-    direccion,
-    dado
-) {
-
-    const destino = calcularDestino(
-        pieza.fila,
-        pieza.columna,
-        direccion,
-        dado
-    );
-
+function conquistaCasa(tablero, pieza, direccion, dado) {
+    const destino = calcularDestino(pieza.fila, pieza.columna, direccion, dado);
     return tablero[destino.fila][destino.columna] === "N";
 }
 
 
-// Elige un movimiento disponible
-//
-// Primero intenta conquistar una casa.
-// Si no puede, elige el primer movimiento válido.
-function elegirMovimiento(
-    tablero,
-    pieza,
-    movimientos,
-    dado
-) {
-
-    for (const direccion of movimientos) {
-
-        if (
-            conquistaCasa(
-                tablero,
-                pieza,
-                direccion,
-                dado
-            )
-        ) {
-            return direccion;
-        }
-    }
-
-    return movimientos[0];
+function elegirMovimiento(tablero, pieza, movimientos, dado) {
+    return movimientos.find((direccion) => conquistaCasa(tablero, pieza, direccion, dado)) ||
+        movimientos[0];
 }
 
 
-// Decide el movimiento de todas las piezas
+// Encuentra una asignación completa de destinos únicos y maximiza las casas
+// conquistadas en este turno. Así nunca propone colisiones evitables.
 function decidirMovimientos(tablero, jugador, dado) {
-
-    const piezas = obtenerPiezas(
-        tablero,
-        jugador
+    const piezas = obtenerPiezas(tablero, jugador);
+    const opciones = piezas.map((pieza) =>
+        movimientosValidosParaPieza(tablero, pieza, dado).map((direccion) => ({
+            direccion,
+            destino: calcularDestino(pieza.fila, pieza.columna, direccion, dado),
+            conquista: conquistaCasa(tablero, pieza, direccion, dado)
+        }))
     );
 
+    if (opciones.some((movimientos) => movimientos.length === 0)) {
+        return {};
+    }
+
+    let mejorPuntaje = -1;
+    let mejorDecisiones = {};
+    const destinosUsados = new Set();
     const decisiones = {};
 
-    for (const pieza of piezas) {
+    function buscar(indice, puntaje) {
+        if (indice === piezas.length) {
+            if (puntaje > mejorPuntaje) {
+                mejorPuntaje = puntaje;
+                mejorDecisiones = { ...decisiones };
+            }
+            return;
+        }
 
-        const movimientos =
-            movimientosValidosParaPieza(
-                tablero,
-                pieza,
-                dado
-            );
+        const pieza = piezas[indice];
+        for (const opcion of opciones[indice]) {
+            const claveDestino = `${opcion.destino.fila},${opcion.destino.columna}`;
+            if (destinosUsados.has(claveDestino)) continue;
 
-        if (movimientos.length > 0) {
-
-            decisiones[pieza.id] =
-                elegirMovimiento(
-                    tablero,
-                    pieza,
-                    movimientos,
-                    dado
-                );
+            destinosUsados.add(claveDestino);
+            decisiones[pieza.id] = opcion.direccion;
+            buscar(indice + 1, puntaje + (opcion.conquista ? 1 : 0));
+            destinosUsados.delete(claveDestino);
+            delete decisiones[pieza.id];
         }
     }
 
-    return decisiones;
+    buscar(0, 0);
+    return mejorDecisiones;
 }
 
 

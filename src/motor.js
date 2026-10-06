@@ -12,11 +12,25 @@ const {
 function validarMovimientos(tablero, jugador, decisiones, dado) {
 
     const piezas = obtenerPiezas(tablero, jugador);
+    const idsPiezas = new Set(piezas.map((pieza) => pieza.id));
+
+    if (
+        !decisiones ||
+        typeof decisiones !== "object" ||
+        Array.isArray(decisiones) ||
+        ![1, 2, 3].includes(dado)
+    ) {
+        return false;
+    }
 
     const destinos = [];
 
     // Todas las piezas deben tener un movimiento
-    if (Object.keys(decisiones).length !== piezas.length) {
+    const idsDecididos = Object.keys(decisiones);
+    if (
+        idsDecididos.length !== piezas.length ||
+        idsDecididos.some((id) => !idsPiezas.has(id))
+    ) {
         return false;
     }
 
@@ -36,12 +50,14 @@ function validarMovimientos(tablero, jugador, decisiones, dado) {
             dado
         );
 
-        // No puede terminar sobre otra pieza
-        if (!posicionLibre(
-            tablero,
-            destino.fila,
-            destino.columna
-        )) {
+        const esOrigenPropio = piezas.some((otraPieza) =>
+            otraPieza.fila === destino.fila &&
+            otraPieza.columna === destino.columna
+        );
+
+        // Una ficha propia puede dejar libre su origen durante esta jugada
+        // simultánea; las fichas rivales siguen bloqueando el destino.
+        if (!posicionLibre(tablero, destino.fila, destino.columna) && !esOrigenPropio) {
             return false;
         }
 
@@ -68,9 +84,7 @@ function ejecutarTurno(tablero, jugador, decisiones, dado) {
 
     const piezas = obtenerPiezas(tablero, jugador);
 
-    const resultados = [];
-
-    for (const pieza of piezas) {
+    const resultados = piezas.map((pieza) => {
 
         const direccion = decisiones[pieza.id];
 
@@ -84,51 +98,60 @@ function ejecutarTurno(tablero, jugador, decisiones, dado) {
         const conquistoCasa =
             tablero[destino.fila][destino.columna] === "N";
 
-        // Quitamos la pieza de su posición anterior
-        tablero[pieza.fila][pieza.columna] = "";
-
-        // Colocamos la pieza en el destino
-        tablero[destino.fila][destino.columna] = pieza.id;
-
-        resultados.push({
+        return {
             piezaId: pieza.id,
             direccion: direccion,
             fila: destino.fila,
             columna: destino.columna,
             conquistoCasa: conquistoCasa
-        });
+        };
+    });
+
+    // Se levantan todas primero para permitir intercambios simultáneos.
+    for (const pieza of piezas) {
+        tablero[pieza.fila][pieza.columna] = "";
+    }
+
+    for (const resultado of resultados) {
+        tablero[resultado.fila][resultado.columna] = resultado.piezaId;
     }
 
     return resultados;
 }
 
 
-// Busca una posición libre cerca de una casa
+// Busca la casilla libre más cercana a la casa con desempate N, E, S, O.
 function buscarPosicionAdyacente(tablero, fila, columna) {
+    const cola = [{ fila, columna }];
+    const visitadas = new Set([`${fila},${columna}`]);
 
-    const posiciones = [
-        {
-            fila: (fila - 1 + 10) % 10,
-            columna: columna
-        },
-        {
-            fila: (fila + 1) % 10,
-            columna: columna
-        },
-        {
-            fila: fila,
-            columna: (columna - 1 + 10) % 10
-        },
-        {
-            fila: fila,
-            columna: (columna + 1) % 10
-        }
+    // El mismo orden determinístico del árbitro: N, E, S, O.
+    const desplazamientos = [
+        { fila: -1, columna: 0 },
+        { fila: 0, columna: 1 },
+        { fila: 1, columna: 0 },
+        { fila: 0, columna: -1 }
     ];
 
-    for (const posicion of posiciones) {
+    while (cola.length > 0) {
+        const actual = cola.shift();
 
-        if (tablero[posicion.fila][posicion.columna] === "") {
-            return posicion;
+        for (const desplazamiento of desplazamientos) {
+            const siguiente = {
+                fila: (actual.fila + desplazamiento.fila + 10) % 10,
+                columna: (actual.columna + desplazamiento.columna + 10) % 10
+            };
+            const clave = `${siguiente.fila},${siguiente.columna}`;
+            if (visitadas.has(clave)) continue;
+            visitadas.add(clave);
+
+            if (tablero[siguiente.fila][siguiente.columna] === "") {
+                return siguiente;
+            }
+
+            // Las casas se pueden atravesar al buscar, pero nunca se usan
+            // como posición de aparición: quedan reservadas para conquistar.
+            cola.push(siguiente);
         }
     }
 
@@ -211,25 +234,31 @@ function colocarPiezasPendientes(estado, jugador) {
         return;
     }
 
-    let cantidadPiezas = obtenerPiezas(
-        estado.tablero,
-        jugador
-    ).length;
+    const piezas = obtenerPiezas(estado.tablero, jugador);
+    let numeroPieza = piezas.reduce((maximo, pieza) => {
+        const coincidencia = pieza.id.match(/^[AB](\d+)$/);
+        return coincidencia ? Math.max(maximo, Number(coincidencia[1])) : maximo;
+    }, 0);
+    const pendientesRestantes = [];
 
     for (const pendiente of pendientes) {
-
-        cantidadPiezas++;
-
-        crearNuevaPieza(
+        const siguienteNumero = numeroPieza + 1;
+        const creada = crearNuevaPieza(
             estado.tablero,
             jugador,
-            cantidadPiezas,
+            siguienteNumero,
             pendiente.fila,
             pendiente.columna
         );
+
+        if (creada) {
+            numeroPieza = siguienteNumero;
+        } else {
+            pendientesRestantes.push(pendiente);
+        }
     }
 
-    estado.piezasPendientes[jugador] = [];
+    estado.piezasPendientes[jugador] = pendientesRestantes;
 }
 
 
